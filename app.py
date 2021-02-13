@@ -93,9 +93,13 @@ def get_games():
 @app.route('/game')
 @cross_origin(supports_credentials=True)
 def add_game():
-    game_id = request.args.get('id')
+    game_url = request.args.get('url')
+    game_id = game_url.split('/')[-1][:8]  # Use only 8 first characters
+    
+    # TODO Validate input and update database accordingly
+
     headers = {'Accept': 'application/json'}
     
     response = requests.get(f"https://lichess.org/game/export/{game_id}", headers=headers)
-    
+
     return response.json()
