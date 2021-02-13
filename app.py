@@ -2,9 +2,11 @@ import datetime
 
 import os
 from pathlib import Path
+from dotenv.main import resolve_nested_variables
 
-from flask import Flask, jsonify
+from flask import Flask, json, jsonify
 from flask import url_for, redirect, request
+from flask_cors import CORS, cross_origin
 import ndjson
 
 import pickle
@@ -19,6 +21,8 @@ from authlib.integrations.flask_client import OAuth
 load_dotenv()
 
 app = Flask(__name__)
+CORS(app, support_credentials=True)
+
 app.secret_key = os.getenv("SECRET_KEY")
 app.config['LICHESS_CLIENT_ID'] =  os.getenv("LICHESS_CLIENT_ID")
 app.config['LICHESS_CLIENT_SECRET'] = os.getenv("LICHESS_CLIENT_SECRET")
@@ -85,3 +89,13 @@ def get_games():
 
     return jsonify({'n_league_games': len(league_games), 'username': username, 'league_games': league_games})
 
+
+@app.route('/game')
+@cross_origin(supports_credentials=True)
+def add_game():
+    game_id = request.args.get('id')
+    headers = {'Accept': 'application/json'}
+    
+    response = requests.get(f"https://lichess.org/game/export/{game_id}", headers=headers)
+    
+    return response.json()
