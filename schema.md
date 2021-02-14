@@ -8,6 +8,7 @@
 - playoffs method (**MVP** > grand final between top 2. tie break as necessary)
 - tiebreak method (**MVP** > 1 x 5+3 blitz random sides)
 - status (active, current phase, current round)
+- players
 
 ## Members table
 - id

@@ -1,4 +1,5 @@
 import datetime
+import random 
 
 import os
 from pathlib import Path
@@ -114,4 +115,23 @@ def add_game():
     game_data['base_time'] = r_data['clock']['initial'] // 60
     game_data['increment'] = r_data['clock']['increment']
     
-    return jsonify(game_data)
+    return jsonify(r_data)
+
+
+@app.route('/ranking')
+@cross_origin(supports_credentials=True)
+def ranking():
+    league_members = ['joaopf', 'dodo900', 'gspenny', 'hiperlicious', 'MrUnseen', 'eduardodsp', 'fckoch', 'guischmitd']
+    ranking_data = []
+    for member in league_members:
+        player_data = {}
+        player_data['name'] = member
+        player_data['wins'] = random.randint(0, 11)
+        player_data['losses'] = random.randint(0, 11)
+        player_data['draws'] = random.randint(0, 9)
+        player_data['aelo'] = random.randint(840, 1340)
+        player_data['games_played'] = player_data['wins'] + player_data['losses'] + player_data['draws']
+        player_data['games_required'] = 36
+        ranking_data.append(player_data)
+
+    return jsonify(ranking_data)
