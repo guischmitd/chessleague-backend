@@ -145,7 +145,6 @@ def get_games():
 
 @app.route('/game')
 @cross_origin(supports_credentials=True)
-
 def add_game():
     game_url = request.args.get('url')
     game_id = game_url.split('/')[-1][:8]  # Use only 8 first characters
@@ -186,3 +185,22 @@ def add_game():
         lichess_gamedata['valid'] = False
     
     return jsonify(lichess_gamedata)
+
+
+@app.route('/ranking')
+@cross_origin(supports_credentials=True)
+def ranking():
+    league_members = [m for m in Member.query.all()]
+    ranking_data = []
+    for member in league_members:
+        player_data = {}
+        player_data['name'] = m.acl_username
+        player_data['wins'] = random.randint(0, 11)
+        player_data['losses'] = random.randint(0, 11)
+        player_data['draws'] = random.randint(0, 9)
+        player_data['aelo'] = random.randint(840, 1340)
+        player_data['games_played'] = player_data['wins'] + player_data['losses'] + player_data['draws']
+        player_data['games_required'] = 36
+        ranking_data.append(player_data)
+
+    return jsonify(ranking_data)
