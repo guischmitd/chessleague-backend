@@ -16,6 +16,9 @@ from dotenv import load_dotenv
 from requests.api import head
 import requests
 
+import time
+import datetime
+
 from authlib.integrations.flask_client import OAuth
 
 load_dotenv()
@@ -101,5 +104,14 @@ def add_game():
     headers = {'Accept': 'application/json'}
     
     response = requests.get(f"https://lichess.org/game/export/{game_id}", headers=headers)
+    r_data = response.json()
 
-    return response.json()
+    winner_color = r_data['winner']
+    game_data = dict(zip(['white', 'black'], [r_data['players']['white']['user']['name'], r_data['players']['black']['user']['name']]))
+    game_data['winner'] = r_data['players'][winner_color]['user']['name']
+    game_data['timestamp'] = datetime.datetime.utcfromtimestamp(r_data['createdAt'] * 1e-3)
+
+    game_data['base_time'] = r_data['clock']['initial'] // 60
+    game_data['increment'] = r_data['clock']['increment']
+    
+    return jsonify(game_data)
