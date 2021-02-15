@@ -130,3 +130,6 @@ dmypy.json
 
 # vscode
 .vscode
+
+# Local project specific tests
+api_tests/

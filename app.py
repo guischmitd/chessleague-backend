@@ -18,7 +18,9 @@ from requests.api import head
 import requests
 
 from authlib.integrations.flask_client import OAuth
-from models import db, Event, Game, Member
+from models import db, Event, Game, Member, Fixture
+from mock_db import initialize_mock_db
+from db_ops import validate_game, add_game_to_db, update_acl_elo
 
 load_dotenv()
 
@@ -39,48 +41,10 @@ app.config['LICHESS_AUTHORIZE_URL'] = 'https://oauth.lichess.org/oauth/authorize
 
 db.init_app(app)
 
-
-def initialize_mock_db():
-    db.drop_all()
-    db.create_all()
-
-    league_members = ['joaopf', 'dodo900', 'gspenny', 'hiperlicious', 'MrUnseen', 'eduardodsp', 'fckoch', 'guischmitd']
-    for member in league_members:
-        m = Member(lichess_username=member,
-                acl_username=member,
-                acl_elo=random.randint(800, 1350),
-                date_joined=datetime.now())
-
-        db.session.add(m)
-
-    members = Member.query.all()
-
-    event = Event(
-        start_date = datetime.now(),
-        start_timestamp = datetime.now(),
-        active = True,
-        n_rounds = 1,
-        rounds_deadline = datetime(2021, 1, 31),
-        playoffs_method = {'top': 2},
-        tiebreak_method = {'time': 5, 'increment': 3, 'rounds': 1},
-        players = [m.acl_username for m in members],
-        current_phase = 'playoffs'
-    )
-
-    db.session.add(event)
-    db.session.commit()
-
-
-initialize_mock_db()
+initialize_mock_db(db, app)
 
 oauth = OAuth(app)
 oauth.register('lichess')
-
-def validate_game(lichess_gamedata):
-    member_names = [m.lichess_username for m in Member.query.all()]
-    
-    return lichess_gamedata['players']['white']['user']['name'] in member_names and \
-           lichess_gamedata['players']['black']['user']['name'] in member_names
 
 
 @app.route('/')
@@ -154,35 +118,16 @@ def add_game():
     response = requests.get(f"https://lichess.org/game/export/{game_id}", headers=headers)
     lichess_gamedata = response.json()
 
-    outcome = lichess_gamedata['winner'] if 'winner' in lichess_gamedata else 'draw'
-    game_data = dict(zip(['white', 'black'], [lichess_gamedata['players']['white']['user']['name'], lichess_gamedata['players']['black']['user']['name']]))
-    
-    game_data['winner'] = lichess_gamedata['players'][outcome]['user']['name'] if outcome != 'draw' else None
-    game_data['timestamp'] = datetime.utcfromtimestamp(lichess_gamedata['createdAt'] * 1e-3)
+    fixture_id = Fixture.query.filter_by(white=lichess_gamedata['players']['white']['user']['id'], 
+                                         black=lichess_gamedata['players']['black']['user']['id']).first().id
+    print(f'Fixture is {fixture_id}:', Fixture.query.get(fixture_id))
 
-    game_data['base_time'] = lichess_gamedata['clock']['initial']
-    game_data['increment'] = lichess_gamedata['clock']['increment']
-    
-    if validate_game(lichess_gamedata):
-        game = Game(date_played=game_data['timestamp'],
-                    date_added=datetime.now(),
-                    white=game_data['white'],
-                    black=game_data['black'],
-                    outcome=outcome,
-                    winner=game_data['winner'],
-                    time_base=game_data['base_time'],
-                    time_increment=game_data['increment'],
-                    lichess_gamedata=lichess_gamedata,
-                    event=Event.query.first().id,
-                    )
-        
-        db.session.add(game)
-        db.session.commit()
+    if validate_game(fixture_id, lichess_gamedata):
+        add_game_to_db(fixture_id, lichess_gamedata)
+        update_acl_elo(fixture_id)
 
-        lichess_gamedata['valid'] = True
-    
     else:
-        lichess_gamedata['valid'] = False
+        print('Invalid game!')
     
     return jsonify(lichess_gamedata)
 
@@ -190,15 +135,15 @@ def add_game():
 @app.route('/ranking')
 @cross_origin(supports_credentials=True)
 def ranking():
-    league_members = [m for m in Member.query.all()]
     ranking_data = []
-    for member in league_members:
+    for member in Member.query.all():
+        print(member.lichess_id, member.acl_elo)
         player_data = {}
-        player_data['name'] = m.acl_username
+        player_data['name'] = member.lichess_id
         player_data['wins'] = random.randint(0, 11)
         player_data['losses'] = random.randint(0, 11)
         player_data['draws'] = random.randint(0, 9)
-        player_data['aelo'] = random.randint(840, 1340)
+        player_data['aelo'] = member.acl_elo
         player_data['games_played'] = player_data['wins'] + player_data['losses'] + player_data['draws']
         player_data['games_required'] = 36
         ranking_data.append(player_data)

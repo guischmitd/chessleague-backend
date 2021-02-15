@@ -37,3 +37,6 @@
 - [x] black
 - [x] outcome (white, black, draw)
 - [x] winner (player name or null in case of draw)
+
+## Fixtures
+- [ ] id
