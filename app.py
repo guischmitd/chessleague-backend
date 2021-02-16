@@ -136,16 +136,48 @@ def add_game():
 @cross_origin(supports_credentials=True)
 def ranking():
     ranking_data = []
+
     for member in Member.query.all():
+        games_required = len(list(Fixture.query.filter_by(white=member.lichess_id)) + 
+                             list(Fixture.query.filter_by(black=member.lichess_id)))
+
+        games_as_white = list(Game.query.filter_by(white=member.lichess_id))
+        games_as_black = list(Game.query.filter_by(black=member.lichess_id))
+        games_played = games_as_white + games_as_black
+
+        wins = len([g for g in games_as_white if g.outcome == 'white'] + 
+                   [g for g in games_as_black if g.outcome == 'black'])
+        
+        draws = len([g for g in games_played if g.outcome == 'draw'])
+
+        losses = len(games_played) - wins - draws
+
         print(member.lichess_id, member.acl_elo)
         player_data = {}
-        player_data['name'] = member.lichess_id
-        player_data['wins'] = random.randint(0, 11)
-        player_data['losses'] = random.randint(0, 11)
-        player_data['draws'] = random.randint(0, 9)
+        player_data['id'] = member.lichess_id
+        player_data['username'] = member.acl_username
+        player_data['wins'] = wins
+        player_data['losses'] = losses
+        player_data['draws'] = draws
         player_data['aelo'] = member.acl_elo
-        player_data['games_played'] = player_data['wins'] + player_data['losses'] + player_data['draws']
-        player_data['games_required'] = 36
+        player_data['games_played'] = len(games_as_black + games_as_white)
+        player_data['games_required'] = games_required
         ranking_data.append(player_data)
 
     return jsonify(ranking_data)
+
+
+@app.route('/fixtures')
+@cross_origin(supports_credentials=True)
+def fixtures():
+    fixtures = []
+    
+    for f in Fixture.query.all():
+        fixture = {'id': f.id, 'white':f.white, 'black': f.black, 
+                   'game_id': f.game_id, 'outcome': f.outcome,
+                   'event_id': f.event_id, 'round_id': f.round_id,
+                   'deadline': f.deadline, 
+                   'time_base': f.time_base, 'time_increment': f.time_increment}
+        fixtures.append(fixture)
+
+    return jsonify(fixtures)

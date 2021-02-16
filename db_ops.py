@@ -37,9 +37,9 @@ def add_game_to_db(fixture_id, lichess_gamedata):
     # Parse lichess_gamedata and build Game row to add to the database
     date_played = datetime.utcfromtimestamp(lichess_gamedata['createdAt'] * 1e-3)
     outcome = lichess_gamedata['winner'] if 'winner' in lichess_gamedata else 'draw'
-    white = lichess_gamedata['players']['white']['user']['name']
-    black = lichess_gamedata['players']['black']['user']['name']
-    winner = lichess_gamedata['players'][outcome]['user']['name'] if outcome != 'draw' else None
+    white = lichess_gamedata['players']['white']['user']['id']
+    black = lichess_gamedata['players']['black']['user']['id']
+    winner = lichess_gamedata['players'][outcome]['user']['id'] if outcome != 'draw' else None
 
     game = Game(id=lichess_gamedata['id'],
                 lichess_gamedata=lichess_gamedata,

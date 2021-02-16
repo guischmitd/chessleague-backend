@@ -37,7 +37,7 @@ def initialize_mock_db(db, app):
         start_timestamp = datetime.now(),
         active = True,
         n_rounds = 1,
-        rounds_deadline = datetime(2021, 1, 31),
+        rounds_deadline = datetime(2021, 2, 8),
         playoffs_method = {'top': 2},
         tiebreak_method = {'base': 300, 'increment': 3},
         rounds_time_format = {'base': 600, 'increment': 0},
