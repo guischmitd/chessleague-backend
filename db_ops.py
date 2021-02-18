@@ -23,11 +23,13 @@ def validate_game(fixture_id, lichess_gamedata):
     
     # Check if correct time format was used
     correct_time_format = fixture.time_base == time_base and fixture.time_increment == time_increment
+    
+    validation_data = {}
     for k, v in zip(['not_fulfilled', 'valid_members', 'new_game', 'within_deadline', 'correct_time_format'], 
-        [not_fulfilled, valid_members, new_game, within_deadline, correct_time_format]):
-        print(k, '=', v)
+                    [not_fulfilled, valid_members, new_game, within_deadline, correct_time_format]):
+        validation_data[k] = v
 
-    return not_fulfilled and valid_members and new_game and within_deadline and correct_time_format
+    return validation_data
 
 
 def add_game_to_db(fixture_id, lichess_gamedata):
@@ -75,3 +77,47 @@ def update_acl_elo(fixture_id):
 
     db.session.commit()
 
+def get_ranking_data():
+    ranking_data = []
+
+    for member in Member.query.all():
+        games_required = len(list(Fixture.query.filter_by(white=member.lichess_id)) + 
+                             list(Fixture.query.filter_by(black=member.lichess_id)))
+
+        games_as_white = list(Game.query.filter_by(white=member.lichess_id))
+        games_as_black = list(Game.query.filter_by(black=member.lichess_id))
+        games_played = games_as_white + games_as_black
+
+        wins = len([g for g in games_as_white if g.outcome == 'white'] + 
+                   [g for g in games_as_black if g.outcome == 'black'])
+        
+        draws = len([g for g in games_played if g.outcome == 'draw'])
+
+        losses = len(games_played) - wins - draws
+
+        print(member.lichess_id, member.acl_elo)
+        player_data = {}
+        player_data['id'] = member.lichess_id
+        player_data['username'] = member.acl_username
+        player_data['wins'] = wins
+        player_data['losses'] = losses
+        player_data['draws'] = draws
+        player_data['aelo'] = member.acl_elo
+        player_data['games_played'] = len(games_as_black + games_as_white)
+        player_data['games_required'] = games_required
+        ranking_data.append(player_data)
+    
+    return ranking_data
+
+def get_fixtures():
+    fixtures = []
+    
+    for f in Fixture.query.all():
+        fixture = {'id': f.id, 'white':f.white, 'black': f.black, 
+                   'game_id': f.game_id, 'outcome': f.outcome,
+                   'event_id': f.event_id, 'round_id': f.round_id,
+                   'deadline': f.deadline, 
+                   'time_base': f.time_base, 'time_increment': f.time_increment}
+        fixtures.append(fixture)
+    
+    return fixtures

@@ -21,6 +21,7 @@ from authlib.integrations.flask_client import OAuth
 from models import db, Event, Game, Member, Fixture
 from mock_db import initialize_mock_db
 from db_ops import validate_game, add_game_to_db, update_acl_elo
+import db_ops
 
 load_dotenv()
 
@@ -82,6 +83,7 @@ def authorize():
 
 @app.route('/games')
 def get_games():
+    # Not currently used. Just for early api testing.
     username = request.args.get('username')
     headers = {'Accept': 'application/x-ndjson'}
 
@@ -107,77 +109,34 @@ def get_games():
     return jsonify({'n_league_games': len(league_games), 'username': username, 'league_games': league_games})
 
 
-@app.route('/game')
+@app.route('/game', methods=['POST'])
 @cross_origin(supports_credentials=True)
 def add_game():
-    game_url = request.args.get('url')
-    game_id = game_url.split('/')[-1][:8]  # Use only 8 first characters
-    headers = {'Accept': 'application/json'}
+    # This endpoint will be called only after user confirmation on the frontend
+    data = json.loads(request.data.decode())
+    fixture_id = data['fixture_id']
+    lichess_gamedata = data['data']
+    validation_data = validate_game(fixture_id, lichess_gamedata)
 
-    # TODO Validate input and update database accordingly
-    response = requests.get(f"https://lichess.org/game/export/{game_id}", headers=headers)
-    lichess_gamedata = response.json()
-
-    fixture_id = Fixture.query.filter_by(white=lichess_gamedata['players']['white']['user']['id'], 
-                                         black=lichess_gamedata['players']['black']['user']['id']).first().id
-    print(f'Fixture is {fixture_id}:', Fixture.query.get(fixture_id))
-
-    if validate_game(fixture_id, lichess_gamedata):
+    if all([v for k, v in validation_data.items()]):
         add_game_to_db(fixture_id, lichess_gamedata)
         update_acl_elo(fixture_id)
 
     else:
         print('Invalid game!')
+        for k, v in validation_data.items():
+            print(k, '=', v)
     
-    return jsonify(lichess_gamedata)
+    return jsonify({'validation': validation_data, 'ranking': db_ops.get_ranking_data(), 'fixtures': db_ops.get_fixtures()})
 
 
 @app.route('/ranking')
 @cross_origin(supports_credentials=True)
 def ranking():
-    ranking_data = []
-
-    for member in Member.query.all():
-        games_required = len(list(Fixture.query.filter_by(white=member.lichess_id)) + 
-                             list(Fixture.query.filter_by(black=member.lichess_id)))
-
-        games_as_white = list(Game.query.filter_by(white=member.lichess_id))
-        games_as_black = list(Game.query.filter_by(black=member.lichess_id))
-        games_played = games_as_white + games_as_black
-
-        wins = len([g for g in games_as_white if g.outcome == 'white'] + 
-                   [g for g in games_as_black if g.outcome == 'black'])
-        
-        draws = len([g for g in games_played if g.outcome == 'draw'])
-
-        losses = len(games_played) - wins - draws
-
-        print(member.lichess_id, member.acl_elo)
-        player_data = {}
-        player_data['id'] = member.lichess_id
-        player_data['username'] = member.acl_username
-        player_data['wins'] = wins
-        player_data['losses'] = losses
-        player_data['draws'] = draws
-        player_data['aelo'] = member.acl_elo
-        player_data['games_played'] = len(games_as_black + games_as_white)
-        player_data['games_required'] = games_required
-        ranking_data.append(player_data)
-
-    return jsonify(ranking_data)
+    return jsonify(db_ops.get_ranking_data())
 
 
 @app.route('/fixtures')
 @cross_origin(supports_credentials=True)
 def fixtures():
-    fixtures = []
-    
-    for f in Fixture.query.all():
-        fixture = {'id': f.id, 'white':f.white, 'black': f.black, 
-                   'game_id': f.game_id, 'outcome': f.outcome,
-                   'event_id': f.event_id, 'round_id': f.round_id,
-                   'deadline': f.deadline, 
-                   'time_base': f.time_base, 'time_increment': f.time_increment}
-        fixtures.append(fixture)
-
-    return jsonify(fixtures)
+    return jsonify(db_ops.get_fixtures())
