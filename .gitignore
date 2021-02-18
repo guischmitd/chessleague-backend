@@ -133,3 +133,4 @@ dmypy.json
 
 # Local project specific tests
 api_tests/
+.logs/

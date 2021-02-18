@@ -23,7 +23,21 @@ from mock_db import initialize_mock_db
 from db_ops import validate_game, add_game_to_db, update_acl_elo
 import db_ops
 
+import sys
+import logging
+
 load_dotenv()
+
+log_dir = Path('./.logs')
+log_dir.mkdir(exist_ok=True, parents=True)
+
+log_path = log_dir / datetime.now().strftime('%Y%m%d.log')
+logging.basicConfig(level=logging.DEBUG, filename=log_path, filemode='a',
+                        format=f'[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s')
+
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.StreamHandler(sys.stdout))
+logger.info('===== Log has been initialized. New run starts here. =====')
 
 app = Flask(__name__)
 app.app_context().push()
@@ -123,9 +137,9 @@ def add_game():
         update_acl_elo(fixture_id)
 
     else:
-        print('Invalid game!')
+        logger.warn('Invalid game!')
         for k, v in validation_data.items():
-            print(k, '=', v)
+            logger.warn(k, '=', v)
     
     return jsonify({'validation': validation_data, 'ranking': db_ops.get_ranking_data(), 'fixtures': db_ops.get_fixtures()})
 

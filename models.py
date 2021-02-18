@@ -19,6 +19,18 @@ class Event(db.Model):
     players = db.Column(JSON)
     
     current_phase = db.Column(db.String)
+
+
+class Round(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    deadline = db.Column(db.Date)
+    event_id = db.Column(db.Integer)
+
+    time_base = db.Column(db.Integer)  # in seconds
+    time_increment = db.Column(db.Integer)  # in seconds
+
+    def __repr__(self):
+        return f'<Round({self.id} - {self.time_base//60}+{self.time_increment} - {self.deadline})>'
     
 
 class Game(db.Model):

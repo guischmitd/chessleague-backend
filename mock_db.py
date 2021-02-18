@@ -3,6 +3,8 @@ from itertools import combinations
 from datetime import datetime
 import requests
 
+import logging
+logger = logging.getLogger(__name__)
 
 def initialize_mock_db(db, app):
     # Drop all tables and recreate them
@@ -10,7 +12,7 @@ def initialize_mock_db(db, app):
     db.create_all()
 
     # Initialize members table
-    print('Initializing members table')
+    logger.info('Initializing members table...')
     league_members = ['joaopf', 'dodo900', 'gspenny', 'hiperlicious', 'mrunseen', 'eduardodsp', 'guischmitd']
     lichess_members_data = requests.post('https://lichess.org/api/users', data=','.join(league_members)).json()
 
@@ -31,12 +33,12 @@ def initialize_mock_db(db, app):
     members = Member.query.all()
 
     # Initialize an event
-    print('Initializing Event')
+    logger.info('Initializing Event...')
     event = Event(
         start_date = datetime.now(),
         start_timestamp = datetime.now(),
         active = True,
-        n_rounds = 1,
+        n_rounds = 2,
         rounds_deadline = datetime(2021, 2, 8),
         playoffs_method = {'top': 2},
         tiebreak_method = {'base': 300, 'increment': 3},
@@ -47,10 +49,12 @@ def initialize_mock_db(db, app):
 
     db.session.add(event)
     db.session.commit()
+
+    # TODO Initialize rounds
     
     # initialize all fixtures
     for r in range(1, event.n_rounds + 1):
-        print(f'Creating fixtures for round {r}')
+        logger.info(f'Creating fixtures for round {r}...')
         for m_a, m_b in set(combinations(league_members, 2)):
             fixture1 = Fixture(
                 round_id=r,
@@ -75,7 +79,7 @@ def initialize_mock_db(db, app):
             db.session.add(fixture1)
             db.session.add(fixture2)
     
-    print('Done initializing fixtures')
+    logger.info('Done initializing mock database.')
 
     db.session.commit()
     
