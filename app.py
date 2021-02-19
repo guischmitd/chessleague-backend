@@ -56,6 +56,7 @@ app.config['LICHESS_AUTHORIZE_URL'] = 'https://oauth.lichess.org/oauth/authorize
 
 db.init_app(app)
 
+logger.info('Initializing database...')
 initialize_mock_db(db, app)
 
 oauth = OAuth(app)
@@ -123,7 +124,7 @@ def get_games():
     return jsonify({'n_league_games': len(league_games), 'username': username, 'league_games': league_games})
 
 
-@app.route('/game', methods=['POST'])
+@app.route('/game', methods=['POST', 'OPTIONS'])
 @cross_origin(supports_credentials=True)
 def add_game():
     # This endpoint will be called only after user confirmation on the frontend
@@ -139,7 +140,7 @@ def add_game():
     else:
         logger.warn('Invalid game!')
         for k, v in validation_data.items():
-            logger.warn(k, '=', v)
+            logger.warn('{k} = {v}')
     
     return jsonify({'validation': validation_data, 'ranking': db_ops.get_ranking_data(), 'fixtures': db_ops.get_fixtures()})
 

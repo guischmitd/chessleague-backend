@@ -1,6 +1,6 @@
 from models import Member, Event, Game, Fixture
 from itertools import combinations
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 
 import logging
@@ -12,7 +12,7 @@ def initialize_mock_db(db, app):
     db.create_all()
 
     # Initialize members table
-    logger.info('Initializing members table...')
+    logger.info('Initializing Members table...')
     league_members = ['joaopf', 'dodo900', 'gspenny', 'hiperlicious', 'mrunseen', 'eduardodsp', 'guischmitd']
     lichess_members_data = requests.post('https://lichess.org/api/users', data=','.join(league_members)).json()
 
@@ -39,47 +39,47 @@ def initialize_mock_db(db, app):
         start_timestamp = datetime.now(),
         active = True,
         n_rounds = 2,
-        rounds_deadline = datetime(2021, 2, 8),
-        playoffs_method = {'top': 2},
-        tiebreak_method = {'base': 300, 'increment': 3},
-        rounds_time_format = {'base': 600, 'increment': 0},
+        rounds_duration = [15, 30],  # in days
+        playoffs_method = {'top': 2},  # Unused for now
+        tiebreak_method = {'base': 300, 'increment': 3}, # Unused for now
+        rounds_time_format = [{'base': 600, 'increment': 0}, {'base': 300, 'increment': 3}],
         players = league_members,
-        current_phase = 'playoffs'
     )
 
-    db.session.add(event)
-    db.session.commit()
-
-    # TODO Initialize rounds
-    
-    # initialize all fixtures
+    # Create the fixtures for each
     for r in range(1, event.n_rounds + 1):
-        logger.info(f'Creating fixtures for round {r}...')
+        logger.info(f'\tCreating round {r}...')
+        
+        round_deadline = event.start_date + timedelta(event.rounds_duration[r-1])
+        round_time_base = event.rounds_time_format[r-1]['base']
+        round_time_increment = event.rounds_time_format[r-1]['increment']
+        
         for m_a, m_b in set(combinations(league_members, 2)):
-            fixture1 = Fixture(
-                round_id=r,
+            fixture_wb = Fixture(
+                round_number=r,
                 event_id=event.id,
                 white=m_a,
                 black=m_b,
-                deadline=event.rounds_deadline,
-                time_base=event.rounds_time_format['base'],
-                time_increment=event.rounds_time_format['increment'],
+                deadline=round_deadline,
+                time_base=round_time_base,
+                time_increment=round_time_increment,
             )
-            
-            fixture2 = Fixture(
-                round_id=r,
+
+            fixture_bw = Fixture(
+                round_number=r,
                 event_id=event.id,
                 white=m_b,
                 black=m_a,
-                deadline=event.rounds_deadline,
-                time_base=event.rounds_time_format['base'],
-                time_increment=event.rounds_time_format['increment'],
+                deadline=round_deadline,
+                time_base=round_time_base,
+                time_increment=round_time_increment,
             )
             
-            db.session.add(fixture1)
-            db.session.add(fixture2)
-    
+            event.fixtures.append(fixture_wb)
+            event.fixtures.append(fixture_bw)
+            
     logger.info('Done initializing mock database.')
 
+    db.session.add(event)
     db.session.commit()
     

@@ -10,28 +10,17 @@ class Event(db.Model):
     active = db.Column(db.Boolean)
     
     n_rounds = db.Column(db.Integer)
-    rounds_deadline = db.Column(db.Date)
-    rounds_time_format = db.Column(JSON)
+    rounds_duration = db.Column(JSON)  # List of length n_rounds. Number of days before round deadline
+    rounds_time_format = db.Column(JSON)  # List of length n_rounds containing a dict with keys 'base' and 'increment' for each round
     
-    playoffs_method = db.Column(JSON)
-    tiebreak_method = db.Column(JSON)
+    playoffs_method = db.Column(JSON)  # Unused for now
+    tiebreak_method = db.Column(JSON)  # Unused for now
 
     players = db.Column(JSON)
-    
-    current_phase = db.Column(db.String)
-
-
-class Round(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    deadline = db.Column(db.Date)
-    event_id = db.Column(db.Integer)
-
-    time_base = db.Column(db.Integer)  # in seconds
-    time_increment = db.Column(db.Integer)  # in seconds
 
     def __repr__(self):
-        return f'<Round({self.id} - {self.time_base//60}+{self.time_increment} - {self.deadline})>'
-    
+        return f'<Event {self.id}({self.n_rounds} rounds starting {self.start_date})>'
+
 
 class Game(db.Model):
     id = db.Column(db.String, primary_key=True)
@@ -48,9 +37,12 @@ class Game(db.Model):
 
     lichess_gamedata = db.Column(JSON)
 
-    event = db.Column(db.Integer)
+    event_id = db.Column(db.Integer, db.ForeignKey('event.id'))
 
-    
+    def __repr__(self):
+        return f'<Game(Played on {self.date_played} - {self.white} (W) vs. {self.black} (B) - {self.time_base//60}+{self.time_increment}{" - Event " + str(self.event) if self.event else ""})>'
+
+
 class Member(db.Model):
     lichess_id = db.Column(db.String, primary_key=True)
     acl_username = db.Column(db.String)
@@ -66,8 +58,10 @@ class Member(db.Model):
 class Fixture(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     deadline = db.Column(db.Date)
-    event_id = db.Column(db.Integer)
-    round_id = db.Column(db.Integer)
+    round_number = db.Column(db.Integer)
+    
+    event_id = db.Column(db.Integer, db.ForeignKey('event.id'), nullable=False)
+    event = db.relationship('Event', backref=db.backref('fixtures', lazy=False))
 
     white = db.Column(db.String)
     black = db.Column(db.String)

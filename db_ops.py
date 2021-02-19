@@ -1,9 +1,11 @@
 from models import Member, Event, Game, Fixture, db
 from datetime import datetime
 from elo import get_rating_deltas
+import sys
 import logging
 
 logger = logging.getLogger(__name__)
+logger.addHandler(logging.StreamHandler(sys.stdout))
 
 def validate_game(fixture_id, lichess_gamedata):
     # Check if fixture has already been fulfilled
@@ -55,7 +57,7 @@ def add_game_to_db(fixture_id, lichess_gamedata):
                 winner=winner,
                 time_base=lichess_gamedata['clock']['initial'],
                 time_increment=lichess_gamedata['clock']['increment'],
-                event=fixture.event_id,
+                event_id=fixture.event_id,
                 )
 
     fixture.game_id = game.id
@@ -98,7 +100,7 @@ def get_ranking_data():
 
         losses = len(games_played) - wins - draws
 
-        logger.debug(member.lichess_id, member.acl_elo, f'{wins}W-{draws}D-{losses}L')
+        logger.debug(f'{member.lichess_id} - {member.acl_elo} - {wins}W-{draws}D-{losses}L')
         player_data = {}
         player_data['id'] = member.lichess_id
         player_data['username'] = member.acl_username
@@ -116,11 +118,16 @@ def get_fixtures():
     fixtures = []
     
     for f in Fixture.query.all():
-        fixture = {'id': f.id, 'white':f.white, 'black': f.black, 
+
+        fixture = {'id': f.id, 'white': f.white, 'black': f.black, 
                    'game_id': f.game_id, 'outcome': f.outcome, 
-                   'event_id': f.event_id, 'round_id': f.round_id,
+                   'event_id': f.event_id, 'round_id': f.round_number,
                    'deadline': f.deadline, 
                    'time_base': f.time_base, 'time_increment': f.time_increment}
+        
+        
+        fixture['winner_name'] = fixture[f.outcome] if f.outcome in ['white', 'black'] else f.outcome
+
         fixtures.append(fixture)
     
     return fixtures
