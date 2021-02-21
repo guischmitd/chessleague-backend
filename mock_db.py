@@ -28,9 +28,6 @@ def initialize_mock_db(db, app):
                     date_joined=datetime.now())
 
             db.session.add(m)
-    db.session.commit()
-
-    members = Member.query.all()
 
     # Initialize an event
     logger.info('Initializing Event...')

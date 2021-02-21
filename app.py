@@ -26,6 +26,7 @@ import db_ops
 import sys
 import logging
 
+
 load_dotenv()
 
 log_dir = Path('./.logs')
@@ -119,7 +120,7 @@ def get_games():
             black = game['players']['black']['user']['id']
 
         if white in league_members or black in league_members:
-           league_games.append(game)
+            league_games.append(game)
 
     return jsonify({'n_league_games': len(league_games), 'username': username, 'league_games': league_games})
 
@@ -155,3 +156,8 @@ def ranking():
 @cross_origin(supports_credentials=True)
 def fixtures():
     return jsonify(db_ops.get_fixtures())
+
+
+if __name__ == "__main__":
+    # use_reloader=False prevents flask from running twice in debug mode
+    app.run(debug=True, use_reloader=False)
