@@ -1,52 +1,64 @@
-from datetime import datetime
-import random
-
+# Standard packages
 import os
+import sys
+import pickle
+import logging
+from datetime import datetime
 from pathlib import Path
+
+# Web utilities
+import ndjson
+import requests
+from dotenv import load_dotenv
 from dotenv.main import resolve_nested_variables
 
 from flask import Flask, json, jsonify
 from flask import url_for, redirect, request
 from flask_cors import CORS, cross_origin
-import ndjson
+from flask_login import (
+    LoginManager,
+    current_user,
+    login_required,
+    login_user,
+    logout_user,
+)
 
-import pickle
-import logging
-
-from dotenv import load_dotenv
-from requests.api import head
-import requests
-
+# Authentication/Authorization imports
+from oauthlib.oauth2 import WebApplicationClient
 from authlib.integrations.flask_client import OAuth
-from models import db, Event, Game, Member, Fixture
+
+# Database internal imports
+from models import User, db, Event, Game, Member, Fixture
 from mock_db import initialize_mock_db
-from db_ops import validate_game, add_game_to_db, update_acl_elo
+from db_ops import get_user, create_user, validate_game, add_game_to_db, update_acl_elo
 import db_ops
 
-import sys
-import logging
-
-
+# Initialize environment, log and flask app
 load_dotenv()
 
 log_dir = Path('./.logs')
 log_dir.mkdir(exist_ok=True, parents=True)
 
 log_path = log_dir / datetime.now().strftime('%Y%m%d.log')
-logging.basicConfig(level=logging.DEBUG, filename=log_path, filemode='a',
-                        format=f'[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s')
-
-logger = logging.getLogger(__name__)
-logger.addHandler(logging.StreamHandler(sys.stdout))
-logger.info('===== Log has been initialized. New run starts here. =====')
 
 app = Flask(__name__)
+print(__name__)
 app.app_context().push()
-
 CORS(app, support_credentials=True)
 
-app.secret_key = os.getenv("SECRET_KEY")
+# handler = logging.StreamHandler(sys.stdout)
+# handler.setFormatter(logging.Formatter('[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s'))
 
+# filehandler = logging.FileHandler(log_path)
+
+# app.logger.addHandler(handler)
+# app.logger.addHandler(filehandler)
+app.logger.setLevel(logging.DEBUG)
+
+app.logger.info('===== Log has been initialized. New run starts here. =====')
+
+
+# Configure flask app with environment variables
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("SQLALCHEMY_DATABASE_URI")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 
@@ -55,36 +67,164 @@ app.config['LICHESS_CLIENT_SECRET'] = os.getenv("LICHESS_CLIENT_SECRET")
 app.config['LICHESS_ACCESS_TOKEN_URL'] = 'https://oauth.lichess.org/oauth'
 app.config['LICHESS_AUTHORIZE_URL'] = 'https://oauth.lichess.org/oauth/authorize'
 
+app.secret_key = os.getenv("SECRET_KEY") or os.urandom(24)
+
+login_manager = LoginManager()
+login_manager.init_app(app)
+
+# Initialize SQL Database
 db.init_app(app)
 
-logger.info('Initializing database...')
-initialize_mock_db(db, app)
+app.logger.debug(f'WERKZEUG_RUN_MAIN = {os.getenv("WERKZEUG_RUN_MAIN")}')
+
+if os.environ.get("WERKZEUG_RUN_MAIN") is None:
+    app.logger.info('Initializing database...')
+    initialize_mock_db(db, app, input_games='test_data/acl1_gamelist.json')
+
+
+# OAuth setup (lichess and google)
+
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", None)
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", None)
+GOOGLE_DISCOVERY_URL = (
+    "https://accounts.google.com/.well-known/openid-configuration"
+)
+client = WebApplicationClient(GOOGLE_CLIENT_ID)
+
+def get_google_provider_cfg():
+    # TODO Add error handling in case google API returns a failure
+    return requests.get(GOOGLE_DISCOVERY_URL).json()
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    return get_user(user_id)
+
 
 oauth = OAuth(app)
 oauth.register('lichess')
 
 
+# API Routes
 @app.route('/')
 def main():
-    
-    return jsonify({'message': 'Hello!'})
-    # return redirect(url_for('login'))
+    if current_user.is_authenticated:
+        return (
+                "<h3>Welcome to the backend!</h3>"
+                "<p>There's actually nothing here, fellow aowgher.</p>"
+                "<p>Maybe you meant to go <a href={}>here</a>?</p>"
+                "<p>Current user: <a href={}>{}</a> logged in with the email: {}</p>".format('http://localhost:3000', 
+                                                                                                current_user.lichess_url, 
+                                                                                                current_user.acl_username, 
+                                                                                                current_user.email)
+            )
+    else:
+        return (
+                '<a class="button" href="/login">LOGIN</a>'.format('http://localhost:3000')
+            )
 
 @app.route('/login')
 def login():
-    redirect_uri = url_for("authorize", _external=True)
+    google_provider_cfg = get_google_provider_cfg()
+    authorization_endpoint = google_provider_cfg["authorization_endpoint"]
+
+    # Use library to construct the request for Google login and provide
+    # scopes that let you retrieve user's profile from Google
+    request_uri = client.prepare_request_uri(
+        authorization_endpoint,
+        redirect_uri=request.base_url + "/callback",
+        scope=["openid", "email", "profile"],
+    )
+    return redirect(request_uri)
+
+
+@app.route('/debug')
+def debug():
+    data = [f.id for f in User.query.all()]
     
+    return str(data)
+
+
+@app.route('/login/callback')
+def login_callback():
+    # Get authorization code Google sent back to you
+    code = request.args.get("code")
+
+    # Find out what URL to hit to get tokens that allow you to ask for
+    # things on behalf of a user
+    google_provider_cfg = get_google_provider_cfg()
+    token_endpoint = google_provider_cfg["token_endpoint"]
+
+    # Prepare and send a request to get tokens! Yay tokens!
+    token_url, headers, body = client.prepare_token_request(
+        token_endpoint,
+        authorization_response=request.url,
+        redirect_url=request.base_url,
+        code=code
+    )
+    token_response = requests.post(
+        token_url,
+        headers=headers,
+        data=body,
+        auth=(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET),
+    )
+
+    # Parse the tokens!
+    client.parse_request_body_response(json.dumps(token_response.json()))
+
+    # Now that you have tokens (yay) let's find and hit the URL
+    # from Google that gives you the user's profile information,
+    # including their Google profile image and email
+    userinfo_endpoint = google_provider_cfg["userinfo_endpoint"]
+    uri, headers, body = client.add_token(userinfo_endpoint)
+    userinfo_response = requests.get(uri, headers=headers, data=body)
+
+    if userinfo_response.json().get("email_verified"):
+        unique_id = userinfo_response.json()["sub"]
+        users_email = userinfo_response.json()["email"]
+        picture = userinfo_response.json()["picture"]
+        users_name = userinfo_response.json()["given_name"]
+    else:
+        return "User email not available or not verified by Google.", 400
+
+    user = get_user(unique_id)
+    if not user:
+        app.logger.info(f'No user found with ID {unique_id}. Creating new user.')
+        create_user(id=unique_id, 
+                    email=users_email, 
+                    profile_picture=picture,
+                    google_name=users_name,
+                    acl_elo=1000,
+                    date_joined=datetime.now(),
+                    lichess_connected=False)
+        user = get_user(unique_id)
+
+    login_user(user)
+
+    if not user.lichess_connected:
+        return redirect(url_for('login_lichess'))
+    else:
+        return redirect(url_for('main'))
+
+
+@app.route('/login/lichess')
+def login_lichess():
+    app.logger.debug('Accessing login_lichess endpoint')
+    redirect_uri = url_for("authorize_lichess", _external=True)
+    app.logger.debug(f'Redirecting to {redirect_uri}')
+
     """
     If you need to append scopes to your requests, add the `scope=...` named argument
     to the `.authorize_redirect()` method. For admissible values refer to https://lichess.org/api#section/Authentication. 
     Example with scopes for allowing the app to read the user's email address:
     `return oauth.lichess.authorize_redirect(redirect_uri, scope="email:read")`
     """
-    return oauth.lichess.authorize_redirect(redirect_uri, scopre="email:read")
+    
+    return oauth.lichess.authorize_redirect(redirect_uri, scope="email:read")
 
 
-@app.route('/authorize')
-def authorize():
+@app.route('/authorize/lichess')
+def authorize_lichess():
     token = oauth.lichess.authorize_access_token()
 
     bearer = token['access_token']
@@ -92,9 +232,9 @@ def authorize():
 
     response = requests.get(f"https://lichess.org/api/account", headers=headers)
 
-    redirect_uri = url_for('get_games', username=response.json()['username'])
-
-    return redirect(redirect_uri)
+    db_ops.update_user_lichess_data(current_user.id, response.json())
+    
+    return redirect(url_for('main'))
 
 
 @app.route('/games')
@@ -139,9 +279,9 @@ def add_game():
         update_acl_elo(fixture_id)
 
     else:
-        logger.warn('Invalid game!')
+        app.logger.warn('Invalid game!')
         for k, v in validation_data.items():
-            logger.warn('{k} = {v}')
+            app.logger.warn('{k} = {v}')
     
     return jsonify({'validation': validation_data, 'ranking': db_ops.get_ranking_data(), 'fixtures': db_ops.get_fixtures()})
 
@@ -159,5 +299,6 @@ def fixtures():
 
 
 if __name__ == "__main__":
-    # use_reloader=False prevents flask from running twice in debug mode
-    app.run(debug=True, use_reloader=False)
+    # Generate certificates and add authority to chrome so you can run flask in https
+    # https://stackoverflow.com/questions/7580508/getting-chrome-to-accept-self-signed-localhost-certificate
+    app.run(debug=True, ssl_context=(".cert/localhost.crt", ".cert/localhost.key"))
