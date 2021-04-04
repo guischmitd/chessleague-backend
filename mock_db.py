@@ -1,4 +1,4 @@
-from models import Member, Event, Game, Fixture
+from models import Member, Event, Game, Fixture, User
 from itertools import combinations
 from datetime import datetime, timedelta
 import requests

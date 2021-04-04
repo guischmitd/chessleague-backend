@@ -1,4 +1,4 @@
-from models import Member, Event, Game, Fixture, db
+from models import Member, Event, Game, Fixture, User, db
 from datetime import datetime
 from elo import get_rating_deltas
 import sys

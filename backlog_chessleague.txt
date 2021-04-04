@@ -1,0 +1,24 @@
+Back
+- Tabela de usuários
+  - acl_username (variável)
+  - id = lichess_id
+  - google_id (?)
+  - google_token (?)
+
+- Glicko2 elo system
+- Endpoints signup/login
+
+- Lógica para playoffs
+- Deploy
+
+- Segurança/Performance
+  - Sistema de queue/pool pra requests?
+  - Permitir qualquer um
+
+Front
+- Fixtures
+  - Formato dos jogos (fixtures)
+  - Identificação de vencedor (?)
+
+- Ranking
+  - Mostrar pontuação (calcular no back)
