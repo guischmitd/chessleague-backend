@@ -1,4 +1,4 @@
-from models import Member, Event, Game, Fixture, User, db
+from models import Member, User, Event, Game, Fixture, db
 from datetime import datetime
 from elo import get_rating_deltas
 import sys
@@ -6,6 +6,31 @@ import logging
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
+
+def create_user(**kwargs):
+    new_user = User(**kwargs)
+    db.session.add(new_user)
+    db.session.commit()
+    return new_user.id
+
+
+def get_user(unique_id):
+    return User.query.get(unique_id)
+
+
+def update_user_lichess_data(user_id, lichess_data):
+    logger.debug('Updating user data')
+    user = get_user(user_id)
+    user.lichess_id = lichess_data['id']
+    user.lichess_connected = True
+    user.lichess_username = lichess_data['username']
+    user.lichess_url = lichess_data['url']
+    user.acl_username = lichess_data['username']
+    user.lichess_rapid_elo = lichess_data['perfs']['rapid']['rating']
+    user.lichess_blitz_elo = lichess_data['perfs']['blitz']['rating']
+
+    db.session.commit()
+
 
 def validate_game(fixture_id, lichess_gamedata):
     # Check if fixture has already been fulfilled

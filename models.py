@@ -1,9 +1,44 @@
+from flask_login.mixins import UserMixin
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.dialects.postgresql import JSON, TIMESTAMP
 
 db = SQLAlchemy()
 
+class User(db.Model, UserMixin):
+    __tablename__='users'
+    id = db.Column(db.String, primary_key=True)  # User Google ID
+    
+    username = db.Column(db.String)
+    aelo = db.Column(db.Integer)
+
+    lichess_id = db.Column(db.String)
+    lichess_connected = db.Column(db.Boolean)
+    lichess_username = db.Column(db.String)
+    lichess_url = db.Column(db.String)
+    lichess_rapid_elo = db.Column(db.Integer)
+    lichess_blitz_elo = db.Column(db.Integer)
+    
+    date_joined = db.Column(db.Date)
+    email = db.Column(db.String)
+    profile_picture = db.Column(db.String)
+    google_name = db.Column(db.String)
+
+    # @property
+    # def is_active(self):
+    #     # override UserMixin property which always returns true
+    #     # return the value of the active column instead
+    #     return self.active
+
+    def __repr__(self):
+        return f'<User {self.username}(AELO {self.aelo} / Member since {self.date_joined} / Lichess {"Not connected!" if not self.lichess_connected else self.lichess_username})>'    
+
+    def json(self):
+        return jsonify({'username': self.username, 'aelo': self.aelo, 'google_id': self.id, 
+                        'lichess_id': self.lichess_id, 'lichess_rapid_elo': self.lichess_rapid_elo, 'lichess_blitz_elo': self.lichess_blitz_elo})
+
+
 class Event(db.Model):
+    __tablename__='events'
     id = db.Column(db.Integer, primary_key=True)
     start_date = db.Column(db.Date)
     start_timestamp = db.Column(TIMESTAMP)
@@ -23,6 +58,7 @@ class Event(db.Model):
 
 
 class Game(db.Model):
+    __tablename__='games'
     id = db.Column(db.String, primary_key=True)
     date_played = db.Column(db.Date)
     date_added = db.Column(db.Date)
@@ -37,13 +73,14 @@ class Game(db.Model):
 
     lichess_gamedata = db.Column(JSON)
 
-    event_id = db.Column(db.Integer, db.ForeignKey('event.id'))
+    event_id = db.Column(db.Integer, db.ForeignKey('events.id'))
 
     def __repr__(self):
         return f'<Game(Played on {self.date_played} - {self.white} (W) vs. {self.black} (B) - {self.time_base//60}+{self.time_increment}{" - Event " + str(self.event) if self.event else ""})>'
 
 
 class Member(db.Model):
+    __tablename__='members'
     lichess_id = db.Column(db.String, primary_key=True)
     acl_username = db.Column(db.String)
     acl_elo = db.Column(db.Integer)
@@ -56,11 +93,12 @@ class Member(db.Model):
 
 
 class Fixture(db.Model):
+    __tablename__='fixtures'
     id = db.Column(db.Integer, primary_key=True)
     deadline = db.Column(db.Date)
     round_number = db.Column(db.Integer)
     
-    event_id = db.Column(db.Integer, db.ForeignKey('event.id'), nullable=False)
+    event_id = db.Column(db.Integer, db.ForeignKey('events.id'), nullable=False)
     event = db.relationship('Event', backref=db.backref('fixtures', lazy=False))
 
     white = db.Column(db.String)

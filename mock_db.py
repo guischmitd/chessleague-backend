@@ -1,12 +1,16 @@
-from models import Member, Event, Game, Fixture, User
+from models import Member, Event, Game, Fixture, User, db
+from flask.globals import request
+import db_ops
 from itertools import combinations
 from datetime import datetime, timedelta
 import requests
+import json
 
 import logging
-logger = logging.getLogger(__name__)
 
-def initialize_mock_db(db, app):
+logger = logging.getLogger('app')
+
+def initialize_mock_db(db, app, input_games=None):
     # Drop all tables and recreate them
     db.drop_all()
     db.create_all()
@@ -74,9 +78,37 @@ def initialize_mock_db(db, app):
             
             event.fixtures.append(fixture_wb)
             event.fixtures.append(fixture_bw)
-            
-    logger.info('Done initializing mock database.')
 
     db.session.add(event)
+    db.session.commit()
+
+    if input_games is not None:
+        with open(input_games, 'r') as f:
+            game_links = json.load(f)
+        
+        logger.debug(f'loading games from {input_games}')
+        fixtures = Fixture.query.all()
+        logger.debug(f'{len(fixtures)} fixtures in db')
+        
+        for g in game_links:
+            logger.debug(f'Fetching data on game {g}')
+            
+            try:
+                headers = {'Accept': 'application/json'}
+                gamedata = requests.get('https://lichess.org/game/export/{}'.format(g.split('/')[-1][:8]), headers=headers).json()
+                
+                fixture_id = [f for f in fixtures if gamedata['players']['white']['user']['id']==f.white and 
+                                                    gamedata['players']['black']['user']['id']==f.black and
+                                                    f.round_number == 1][0].id
+                validation = db_ops.validate_game(fixture_id, gamedata)
+                if all([v for k, v in validation.items()]):
+                    db_ops.add_game_to_db(fixture_id, gamedata)
+                    db_ops.update_acl_elo(fixture_id)
+                else:
+                    logger.warn(validation)
+            except Exception as e:
+                logger.error(f'Error loading game {g}: {e}')
+    
+    logger.info('Done initializing mock DB')
     db.session.commit()
     
