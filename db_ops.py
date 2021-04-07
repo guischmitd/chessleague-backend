@@ -4,14 +4,14 @@ from elo import get_rating_deltas
 import sys
 import logging
 
-logger = logging.getLogger(__name__)
-logger.addHandler(logging.StreamHandler(sys.stdout))
+logger = logging.getLogger('app')
 
 def create_user(**kwargs):
     new_user = User(**kwargs)
     db.session.add(new_user)
     db.session.commit()
-    return new_user.id
+    logger.info(f'New user {new_user} added to database')
+    return new_user
 
 
 def get_user(unique_id):

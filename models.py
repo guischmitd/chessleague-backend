@@ -1,5 +1,6 @@
 from flask_login.mixins import UserMixin
 from flask_sqlalchemy import SQLAlchemy
+from flask import jsonify
 from sqlalchemy.dialects.postgresql import JSON, TIMESTAMP
 
 db = SQLAlchemy()
@@ -33,8 +34,8 @@ class User(db.Model, UserMixin):
         return f'<User {self.username}(AELO {self.aelo} / Member since {self.date_joined} / Lichess {"Not connected!" if not self.lichess_connected else self.lichess_username})>'    
 
     def json(self):
-        return jsonify({'username': self.username, 'aelo': self.aelo, 'google_id': self.id, 
-                        'lichess_id': self.lichess_id, 'lichess_rapid_elo': self.lichess_rapid_elo, 'lichess_blitz_elo': self.lichess_blitz_elo})
+        return {'username': self.username, 'aelo': self.aelo, 'google_id': self.id, 
+                'lichess_id': self.lichess_id, 'lichess_rapid_elo': self.lichess_rapid_elo, 'lichess_blitz_elo': self.lichess_blitz_elo}
 
 
 class Event(db.Model):
@@ -112,24 +113,24 @@ class Fixture(db.Model):
     def __repr__(self):
         return f'<Fixture({self.white} (w) vs. {self.black} (b). {self.time_base//60}+{self.time_increment})>'
 
-class User(db.Model):
-    __tablename__ = 'users'
-    google_id = db.Column(db.String, primary_key=True)
-    lichess_id = db.Column(db.String)
-    role = db.Column(db.String)
+# class User(db.Model):
+#     __tablename__ = 'users'
+#     google_id = db.Column(db.String, primary_key=True)
+#     lichess_id = db.Column(db.String)
+#     role = db.Column(db.String)
     
-    username = db.Column(db.String)
-    aelo = db.Column(db.Integer)
+#     username = db.Column(db.String)
+#     aelo = db.Column(db.Integer)
 
-    lichess_username = db.Column(db.String)
-    lichess_rapid_elo = db.Column(db.Integer)
-    lichess_blitz_elo = db.Column(db.Integer)
+#     lichess_username = db.Column(db.String)
+#     lichess_rapid_elo = db.Column(db.Integer)
+#     lichess_blitz_elo = db.Column(db.Integer)
     
-    date_joined = db.Column(db.Date)
+#     date_joined = db.Column(db.Date)
 
-    def __repr__(self):
-        return f'<User(username={self.username}, role={self.role}, lichess_id={self.lichess_id}, google_id={self.google_id})>'
+#     def __repr__(self):
+#         return f'<User(username={self.username}, role={self.role}, lichess_id={self.lichess_id}, google_id={self.google_id})>'
 
-    def json(self):
-        return jsonify({'username': self.username, 'aelo': self.aelo, 'google_id': self.google_id, 
-                        'lichess_id': self.lichess_id, 'lichess_rapid_elo': self.lichess_rapid_elo, 'lichess_blitz_elo': self.lichess_blitz_elo})
+#     def json(self):
+#         return jsonify({'username': self.username, 'aelo': self.aelo, 'google_id': self.google_id, 
+#                         'lichess_id': self.lichess_id, 'lichess_rapid_elo': self.lichess_rapid_elo, 'lichess_blitz_elo': self.lichess_blitz_elo})

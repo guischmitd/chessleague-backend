@@ -12,7 +12,7 @@ import requests
 from dotenv import load_dotenv
 from dotenv.main import resolve_nested_variables
 
-from flask import Flask, json, jsonify
+from flask import Flask, json, jsonify, session
 from flask import url_for, redirect, request
 from flask_cors import CORS, cross_origin
 
@@ -26,7 +26,6 @@ import logging
 
 from dotenv import load_dotenv
 from requests.api import head
-import requests
 import base64
 
 from authlib.integrations.flask_client import OAuth
@@ -42,6 +41,8 @@ from flask_login import (
 # Authentication/Authorization imports
 from oauthlib.oauth2 import WebApplicationClient
 from authlib.integrations.flask_client import OAuth
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
 
 # Database internal imports
 from models import User, db, Event, Game, Member, Fixture
@@ -64,7 +65,7 @@ CORS(app, support_credentials=True)
 login_manager = LoginManager()
 
 app.secret_key = os.getenv("SECRET_KEY") or os.urandom(128)
-logger.debug(f'Secret Key: {app.secret_key}')
+app.logger.debug(f'Secret Key: {app.secret_key}')
 
 # filehandler = logging.FileHandler(log_path)
 
@@ -97,7 +98,8 @@ app.logger.debug(f'WERKZEUG_RUN_MAIN = {os.getenv("WERKZEUG_RUN_MAIN")}')
 
 if os.environ.get("WERKZEUG_RUN_MAIN") is None:
     app.logger.info('Initializing database...')
-    initialize_mock_db(db, app, input_games='test_data/acl1_gamelist.json')
+    input_games_path = Path('test_data/acl1_gamelist.json')
+    initialize_mock_db(db, app, input_games= input_games_path if input_games_path.exists() else None)
 
 
 # OAuth setup (lichess and google)
@@ -118,42 +120,22 @@ def get_google_provider_cfg():
 def load_user(user_id):
     return get_user(user_id)
 
-
 oauth = OAuth(app)
 oauth.register('lichess')
-
 
 # API Routes
 @app.route('/')
 def main():
-    if current_user.is_authenticated:
-        return (
+    response = (
                 "<h3>Welcome to the backend!</h3>"
                 "<p>There's actually nothing here, fellow aowgher.</p>"
-                "<p>Maybe you meant to go <a href={}>here</a>?</p>"
-                "<p>Current user: <a href={}>{}</a> logged in with the email: {}</p>".format('http://localhost:3000', 
-                                                                                                current_user.lichess_url, 
-                                                                                                current_user.acl_username, 
+                "<p>Maybe you meant to go <a href={}>here</a>?</p>".format('http://localhost:3000')
+            )
+    if current_user.is_authenticated:
+        response += "<p>Current user: <a href={}>{}</a> logged in with the email: {}</p>".format(current_user.lichess_url,
+                                                                                                current_user.username, 
                                                                                                 current_user.email)
-            )
-    else:
-        return (
-                '<a class="button" href="/login">LOGIN</a>'.format('http://localhost:3000')
-            )
-
-@app.route('/login')
-def login():
-    google_provider_cfg = get_google_provider_cfg()
-    authorization_endpoint = google_provider_cfg["authorization_endpoint"]
-
-    # Use library to construct the request for Google login and provide
-    # scopes that let you retrieve user's profile from Google
-    request_uri = client.prepare_request_uri(
-        authorization_endpoint,
-        redirect_uri=request.base_url + "/callback",
-        scope=["openid", "email", "profile"],
-    )
-    return redirect(request_uri)
+    return response
 
 
 @app.route('/debug')
@@ -163,71 +145,9 @@ def debug():
     return str(data)
 
 
-@app.route('/login/callback')
-def login_callback():
-    # Get authorization code Google sent back to you
-    code = request.args.get("code")
-
-    # Find out what URL to hit to get tokens that allow you to ask for
-    # things on behalf of a user
-    google_provider_cfg = get_google_provider_cfg()
-    token_endpoint = google_provider_cfg["token_endpoint"]
-
-    # Prepare and send a request to get tokens! Yay tokens!
-    token_url, headers, body = client.prepare_token_request(
-        token_endpoint,
-        authorization_response=request.url,
-        redirect_url=request.base_url,
-        code=code
-    )
-    token_response = requests.post(
-        token_url,
-        headers=headers,
-        data=body,
-        auth=(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET),
-    )
-
-    # Parse the tokens!
-    client.parse_request_body_response(json.dumps(token_response.json()))
-
-    # Now that you have tokens (yay) let's find and hit the URL
-    # from Google that gives you the user's profile information,
-    # including their Google profile image and email
-    userinfo_endpoint = google_provider_cfg["userinfo_endpoint"]
-    uri, headers, body = client.add_token(userinfo_endpoint)
-    userinfo_response = requests.get(uri, headers=headers, data=body)
-
-    if userinfo_response.json().get("email_verified"):
-        unique_id = userinfo_response.json()["sub"]
-        users_email = userinfo_response.json()["email"]
-        picture = userinfo_response.json()["picture"]
-        users_name = userinfo_response.json()["given_name"]
-    else:
-        return "User email not available or not verified by Google.", 400
-
-    user = get_user(unique_id)
-    if not user:
-        app.logger.info(f'No user found with ID {unique_id}. Creating new user.')
-        create_user(id=unique_id, 
-                    email=users_email, 
-                    profile_picture=picture,
-                    google_name=users_name,
-                    acl_elo=1000,
-                    date_joined=datetime.now(),
-                    lichess_connected=False)
-        user = get_user(unique_id)
-
-    login_user(user)
-
-    if not user.lichess_connected:
-        return redirect(url_for('login_lichess'))
-    else:
-        return redirect(url_for('main'))
-
-
-@app.route('/login/lichess')
-def login_lichess():
-    app.logger.debug('Accessing login_lichess endpoint')
+@app.route('/connect_lichess')
+def connect_lichess():
+    app.logger.debug('Accessing connect_lichess endpoint')
     redirect_uri = url_for("authorize_lichess", _external=True)
     app.logger.debug(f'Redirecting to {redirect_uri}')
 
@@ -251,7 +171,7 @@ def authorize_lichess():
 
     # db_ops.update_user_lichess_data(current_user.id, response.json())
 
-    return jsonify({'session_data': session, 'lichess_data': response.json()})
+    return jsonify({'registering_user_id': session['registering_user_id'], 'lichess_data': response.json()})
 
 
 @app.route('/games')
@@ -312,26 +232,70 @@ def ranking():
 @app.route('/fixtures')
 @cross_origin(supports_credentials=True)
 def fixtures():
+    app.logger.debug(current_user if current_user.is_authenticated else current_user)
     return jsonify(db_ops.get_fixtures())
 
 
-@app.route('/login/<string:gtoken>')
+@app.route('/login', methods=['POST', 'OPTIONS'])
 @cross_origin(supports_credentials=True)
-def login(gtoken):
-    # header.body.signature
-    # gtoken = b'eyJhbGciOiJSUzI1NiIsImtpZCI6ImUxYWMzOWI2Y2NlZGEzM2NjOGNhNDNlOWNiYzE0ZjY2ZmFiODVhNGMiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJhY2NvdW50cy5nb29nbGUuY29tIiwiYXpwIjoiODUyNzY3MTI5ODY5LXZnczhtNmt0cGF0MWI0MmFkdjY0azNncHNxc3BxcDE2LmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwiYXVkIjoiODUyNzY3MTI5ODY5LXZnczhtNmt0cGF0MWI0MmFkdjY0azNncHNxc3BxcDE2LmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwic3ViIjoiMTA0MDE1MTcxOTc1ODk0OTY3NjU2IiwiZW1haWwiOiJndWlzY2htaXRkQGdtYWlsLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJhdF9oYXNoIjoiMklaTmdleDFsRUlIa3NjM2tZNk9RQSIsIm5hbWUiOiJHdWlsaGVybWUgQmFyYcO6bmEgU2NobWl0ZCIsInBpY3R1cmUiOiJodHRwczovL2xoMy5nb29nbGV1c2VyY29udGVudC5jb20vYS0vQU9oMTRHaGNneFpJRE1sUFVSZWEyanoxR3JURjhCUkVKWi1zUEx1YnFwWVFMUT1zOTYtYyIsImdpdmVuX25hbWUiOiJHdWlsaGVybWUiLCJmYW1pbHlfbmFtZSI6IkJhcmHDum5hIFNjaG1pdGQiLCJsb2NhbGUiOiJlbiIsImlhdCI6MTYxNzQ1Mjk3OSwiZXhwIjoxNjE3NDU2NTc5LCJqdGkiOiIyZGFlODU4YzYzNzFiNDJjOWYxMThkMGE1ODY2MTY3MzBhYjQ0YjkxIn0.BKEmSuaCRHm-ylafU5zaY3ktZlieZeyRvuNGiiwNd1gNbnX9wrMSWJe58WnNpwaU4qJA3Uar0F_hin5BKVwMgjywWbtoUpkdD2qH7rLoJy8fVRvIcExjMKv5FD-bU9Yk0dFv5pduDdOj8eYXEopMKkNh0gAJ-lwhmwFz-FROUfibkQ0bp6Uc6JZ_YGrj33Lg1dp3ct46DNzcqO91J3IE8PL0yEx_d7J8qYrnMJ6MZ9IyTX9ItESGrAqM2Hj_LNM5CYFSFveaK_zCiJoRQcgg9r-FcyZbG_ApKvdllMk5Ivifwosd0G3GEXZUWgy2hll4kvlevQH0MFG3fknn8Ks2oA'
-    header, body, signature = gtoken.split('.')
-    header = json.loads(base64.b64decode((header + '========').encode('utf-8')).decode('utf-8'))
-    body = json.loads(base64.b64decode((body + '========').encode('utf-8')).decode('utf-8'))
+def login():
+    payload = json.loads(request.data)
+    gtoken = payload['gtoken']
+    user_data = validate_google_JWT(gtoken)
 
-    user = User.query.get(body['sub'])
-    if user:
-        return user.json()
+    if user_data:
+        logout_user()
+        user = User.query.get(user_data['sub'])
+
+        if user:
+            login_user(user)
+            status = 'existing_user_login'
+
+        else:
+            app.logger.debug(f'User {user_data["sub"]} is not registered. Creating new user')
+            name_parts = user_data['name'].split(' ')
+            username = ''.join([part[0] for part in name_parts[:-1]] + [name_parts[-1]]).lower()
+
+            user = db_ops.create_user(**{'id': user_data["sub"], 'lichess_connected': False, 
+                                         'date_joined': datetime.now(), 'email': user_data['email'], 'username': username,
+                                         'google_name': user_data['name'], 'profile_picture': user_data['picture'], 
+                                         'aelo': 1000})
+            
+            status = 'new_user_registered'
+
+        res = login_user(user)
+
     else:
-        session['registering_user_id'] = body['sub']
-        return redirect(url_for('connect_lichess'))
-    
-    return jsonify({'header': header, 'body': body, 'signature': signature})
+        # Invalid token
+        status = 'invalid_google_token'
+        res = False
+
+    return jsonify({'login_status': status, 'current_user': current_user.json(), 'login_success': res})
+
+
+
+def validate_google_JWT(gtoken):
+    try:
+        # Specify the CLIENT_ID of the app that accesses the backend:
+        idinfo = id_token.verify_oauth2_token(gtoken.encode('utf-8'), google_requests.Request(), os.getenv("FRONTEND_GOOGLE_CLIENT_ID"))
+        
+        # Or, if multiple clients access the backend server:
+        # idinfo = id_token.verify_oauth2_token(token, requests.Request())
+        # if idinfo['aud'] not in [CLIENT_ID_1, CLIENT_ID_2, CLIENT_ID_3]:
+        #     raise ValueError('Could not verify audience.')
+
+        # If auth request is from a G Suite domain:
+        # if idinfo['hd'] != GSUITE_DOMAIN_NAME:
+        #     raise ValueError('Wrong hosted domain.')
+
+        # ID token is valid. Get the user's Google Account ID from the decoded token.
+        app.logger.debug('Valid token for user ' + idinfo['sub'])
+        return idinfo
+        
+    except ValueError:
+        # Invalid token
+        app.logger.debug('Invalid Token')
+        return False
 
 
 if __name__ == "__main__":
