@@ -5,6 +5,7 @@ import pickle
 import logging
 from datetime import datetime
 from pathlib import Path
+import unidecode
 
 # Web utilities
 import ndjson
@@ -15,9 +16,6 @@ from dotenv.main import resolve_nested_variables
 from flask import Flask, json, jsonify, session
 from flask import url_for, redirect, request
 from flask_cors import CORS, cross_origin
-
-import google.oauth2.credentials
-import google_auth_oauthlib.flow
 
 import ndjson
 
@@ -59,7 +57,6 @@ log_dir.mkdir(exist_ok=True, parents=True)
 log_path = log_dir / datetime.now().strftime('%Y%m%d.log')
 
 app = Flask(__name__)
-print(__name__)
 app.app_context().push()
 CORS(app, support_credentials=True)
 login_manager = LoginManager()
@@ -103,7 +100,6 @@ if os.environ.get("WERKZEUG_RUN_MAIN") is None:
 
 
 # OAuth setup (lichess and google)
-
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", None)
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", None)
 GOOGLE_DISCOVERY_URL = (
@@ -140,13 +136,15 @@ def main():
 
 @app.route('/debug')
 def debug():
-    data = [f.id for f in User.query.all()]
+    data = {'current_user': current_user.json() if current_user.is_authenticated else None,
+            'test_decode': unidecode.unidecode('François')}
     
-    return str(data)
+    return jsonify(data)
 
 
 @app.route('/connect_lichess')
 def connect_lichess():
+    # Not currently used. Lichess connection might be better handled by frontend
     app.logger.debug('Accessing connect_lichess endpoint')
     redirect_uri = url_for("authorize_lichess", _external=True)
     app.logger.debug(f'Redirecting to {redirect_uri}')
@@ -162,6 +160,7 @@ def connect_lichess():
 
 @app.route('/authorize_lichess')
 def authorize_lichess():
+    # Not currently used. Lichess authorization might be better handled by frontend
     token = oauth.lichess.authorize_access_token()
 
     bearer = token['access_token']
@@ -171,7 +170,7 @@ def authorize_lichess():
 
     # db_ops.update_user_lichess_data(current_user.id, response.json())
 
-    return jsonify({'registering_user_id': session['registering_user_id'], 'lichess_data': response.json()})
+    return jsonify({'lichess_data': response.json()})
 
 
 @app.route('/games')
@@ -232,7 +231,6 @@ def ranking():
 @app.route('/fixtures')
 @cross_origin(supports_credentials=True)
 def fixtures():
-    app.logger.debug(current_user if current_user.is_authenticated else current_user)
     return jsonify(db_ops.get_fixtures())
 
 
@@ -255,7 +253,7 @@ def login():
             app.logger.debug(f'User {user_data["sub"]} is not registered. Creating new user')
             name_parts = user_data['name'].split(' ')
             username = ''.join([part[0] for part in name_parts[:-1]] + [name_parts[-1]]).lower()
-
+            username = unidecode.unidecode(username)
             user = db_ops.create_user(**{'id': user_data["sub"], 'lichess_connected': False, 
                                          'date_joined': datetime.now(), 'email': user_data['email'], 'username': username,
                                          'google_name': user_data['name'], 'profile_picture': user_data['picture'], 
@@ -272,6 +270,13 @@ def login():
 
     return jsonify({'login_status': status, 'current_user': current_user.json(), 'login_success': res})
 
+
+@app.route('/logout', methods=['POST', 'OPTIONS'])
+@cross_origin(supports_credentials=True)
+def logout():
+    result = logout_user()
+    app.logger.debug(result)
+    return jsonify({'logout_result': result, 'current_user': current_user if not result else None})
 
 
 def validate_google_JWT(gtoken):

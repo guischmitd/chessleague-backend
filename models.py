@@ -31,10 +31,10 @@ class User(db.Model, UserMixin):
     #     return self.active
 
     def __repr__(self):
-        return f'<User {self.username}(AELO {self.aelo} / Member since {self.date_joined} / Lichess {"Not connected!" if not self.lichess_connected else self.lichess_username})>'    
+        return f'<User {self.username}(AELO {self.aelo} / Member since {self.date_joined} / Lichess {"Not connected!" if not self.lichess_connected else self.lichess_username})>'
 
     def json(self):
-        return {'username': self.username, 'aelo': self.aelo, 'google_id': self.id, 
+        return {'username': self.username, 'aelo': self.aelo, 'google_id': self.id, 'lichess_connected': self.lichess_connected,
                 'lichess_id': self.lichess_id, 'lichess_rapid_elo': self.lichess_rapid_elo, 'lichess_blitz_elo': self.lichess_blitz_elo}
 
 
